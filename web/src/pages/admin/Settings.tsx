@@ -1,0 +1,975 @@
+import { useState, useEffect } from "react";
+import {
+  Card,
+  Form,
+  Input,
+  Button,
+  Typography,
+  Row,
+  Col,
+  DatePicker,
+  Space,
+  Modal,
+  List,
+  Spin,
+  Alert,
+  InputNumber,
+  Switch,
+  Table,
+  Popconfirm,
+  message,
+} from "antd";
+import {
+  SaveOutlined,
+  ReloadOutlined,
+  WarningOutlined,
+  SyncOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
+import { adminSettingsAPI, Event } from "../../api/admin/settings";
+import {
+  handleResp,
+  handleRespWithNotifySuccess,
+} from "../../utils/handleResp";
+import { useWebsite } from "../../contexts/WebsiteContext";
+import { useIsMobile } from "../../utils/mobile";
+
+const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
+
+// Editable cell component for inline editing
+interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
+  editing: boolean;
+  dataIndex: string;
+  title: any;
+  record: Event;
+  index: number;
+  children: React.ReactNode;
+}
+
+const EditableCell: React.FC<EditableCellProps> = ({
+  editing,
+  dataIndex,
+  children,
+  ...restProps
+}) => {
+  return (
+    <td {...restProps}>
+      {editing ? (
+        <Form.Item
+          name={dataIndex}
+          style={{ margin: 0 }}
+          rules={[
+            { required: true, message: "请输入届次名称" },
+            { max: 100, message: "届次名称最长100个字符" },
+          ]}
+        >
+          <Input placeholder="如：第一届运动会" />
+        </Form.Item>
+      ) : (
+        children
+      )}
+    </td>
+  );
+};
+
+const Settings: React.FC = () => {
+  const [form] = Form.useForm();
+  const [eventForm] = Form.useForm();
+  const isMobile = useIsMobile();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [rebuildLoading, setRebuildLoading] = useState(false);
+  const [logsModalVisible, setLogsModalVisible] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const { refresh: refreshWebsiteInfo } = useWebsite();
+
+  // Event management states
+  const [events, setEvents] = useState<Event[]>([]);
+  const [currentEventId, setCurrentEventId] = useState<number>(0);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [editingEventKey, setEditingEventKey] = useState<number | null>(null);
+
+  const fetchSettings = async () => {
+    setLoading(true);
+    const data = await adminSettingsAPI.getSettings();
+    handleResp(
+      data,
+      (data) => {
+        // 设置表单值
+        form.setFieldsValue({
+          // 钉钉设置
+          "dingtalk.app_key": data?.dingtalk.app_key,
+          "dingtalk.app_secret": data?.dingtalk.app_secret,
+          "dingtalk.agent_id": data?.dingtalk.agent_id,
+          "dingtalk.corp_id": data?.dingtalk.corp_id,
+
+          // 网站设置
+          "website.name": data?.website.name,
+          "website.icp_beian": data?.website.icp_beian,
+          "website.public_sec_beian": data?.website.public_sec_beian,
+          "website.domain": data?.website.domain,
+
+          // 比赛设置
+          submission_time:
+            data?.competition.submission_start_time &&
+            data?.competition.submission_end_time
+              ? [
+                  dayjs(data.competition.submission_start_time),
+                  dayjs(data.competition.submission_end_time),
+                ]
+              : undefined,
+          voting_time:
+            data?.competition.voting_start_time &&
+            data?.competition.voting_end_time
+              ? [
+                  dayjs(data.competition.voting_start_time),
+                  dayjs(data.competition.voting_end_time),
+                ]
+              : undefined,
+          registration_time:
+            data?.competition.registration_start_time &&
+            data?.competition.registration_end_time
+              ? [
+                  dayjs(data.competition.registration_start_time),
+                  dayjs(data.competition.registration_end_time),
+                ]
+              : undefined,
+          max_registrations_per_person:
+            data?.competition.max_registrations_per_person || 3,
+
+          // 看板设置
+          "dashboard.enabled": data?.dashboard.enabled !== false,
+
+          // 得分映射设置
+          team_points_mapping: data?.scoring.team_points_mapping
+            ? Object.entries(data.scoring.team_points_mapping).map(
+                ([rank, points]) => ({
+                  rank,
+                  points,
+                }),
+              )
+            : [],
+          individual_points_mapping: data?.scoring.individual_points_mapping
+            ? Object.entries(data.scoring.individual_points_mapping).map(
+                ([rank, points]) => ({
+                  rank,
+                  points,
+                }),
+              )
+            : [],
+        });
+        setLoading(false);
+      },
+      () => {
+        setLoading(false);
+      },
+    );
+  };
+
+  useEffect(() => {
+    fetchSettings();
+    fetchEvents();
+  }, []);
+
+  const handleSave = async (values: any) => {
+    setSaving(true);
+
+    const updateData: any = {
+      dingtalk: {
+        app_key: values["dingtalk.app_key"] || "",
+        app_secret: values["dingtalk.app_secret"] || "",
+        agent_id: values["dingtalk.agent_id"] || "",
+        corp_id: values["dingtalk.corp_id"] || "",
+      },
+      website: {
+        name: values["website.name"] || "",
+        icp_beian: values["website.icp_beian"] || "",
+        public_sec_beian: values["website.public_sec_beian"] || "",
+        domain: values["website.domain"] || "",
+      },
+      competition: {
+        max_registrations_per_person:
+          values["max_registrations_per_person"] || 0,
+      },
+      dashboard: {
+        enabled: values["dashboard.enabled"] !== false,
+      },
+      scoring: {
+        team_points_mapping: {},
+        individual_points_mapping: {},
+      },
+    };
+
+    // 处理时间范围
+    if (values.submission_time) {
+      updateData.competition.submission_start_time =
+        values.submission_time[0].format("YYYY-MM-DD HH:mm:ss");
+      updateData.competition.submission_end_time =
+        values.submission_time[1].format("YYYY-MM-DD HH:mm:ss");
+    }
+
+    if (values.voting_time) {
+      updateData.competition.voting_start_time = values.voting_time[0].format(
+        "YYYY-MM-DD HH:mm:ss",
+      );
+      updateData.competition.voting_end_time = values.voting_time[1].format(
+        "YYYY-MM-DD HH:mm:ss",
+      );
+    }
+
+    if (values.registration_time) {
+      updateData.competition.registration_start_time =
+        values.registration_time[0].format("YYYY-MM-DD HH:mm:ss");
+      updateData.competition.registration_end_time =
+        values.registration_time[1].format("YYYY-MM-DD HH:mm:ss");
+    }
+
+    // 处理得分映射
+    if (
+      values.team_points_mapping &&
+      Array.isArray(values.team_points_mapping)
+    ) {
+      values.team_points_mapping.forEach((item: any) => {
+        if (item && item.rank && item.points !== undefined) {
+          updateData.scoring.team_points_mapping[item.rank] = item.points;
+        }
+      });
+    }
+
+    if (
+      values.individual_points_mapping &&
+      Array.isArray(values.individual_points_mapping)
+    ) {
+      values.individual_points_mapping.forEach((item: any) => {
+        if (item && item.rank && item.points !== undefined) {
+          updateData.scoring.individual_points_mapping[item.rank] = item.points;
+        }
+      });
+    }
+
+    const response = await adminSettingsAPI.updateSettings(updateData);
+    handleRespWithNotifySuccess(
+      response,
+      async () => {
+        fetchSettings();
+        // 在保存设置后重新获取网站信息（更新标题等）
+        await refreshWebsiteInfo();
+        setSaving(false);
+      },
+      () => {
+        setSaving(false);
+      },
+    );
+  };
+
+  const handleRebuildMapping = () => {
+    Modal.confirm({
+      title: "重建家长-学生映射关系",
+      content: (
+        <div>
+          <p>此操作将：</p>
+          <ul>
+            <li>清空现有的家长-学生关系映射</li>
+            <li>从钉钉重新获取所有班级的家长-学生关系</li>
+            <li>可能需要较长时间完成</li>
+          </ul>
+          <p style={{ color: "#ff4d4f", marginTop: 16 }}>
+            <WarningOutlined /> 确定要继续吗？
+          </p>
+        </div>
+      ),
+      okText: "确定重建",
+      cancelText: "取消",
+      okType: "danger",
+      onOk: performRebuildMapping,
+    });
+  };
+
+  const performRebuildMapping = async () => {
+    setRebuildLoading(true);
+    const response = await adminSettingsAPI.rebuildMapping();
+    handleRespWithNotifySuccess(
+      response,
+      () => {
+        setRebuildLoading(false);
+      },
+      () => {
+        setRebuildLoading(false);
+      },
+    );
+  };
+
+  const fetchLogs = async () => {
+    const response = await adminSettingsAPI.getMappingLogs();
+    handleResp(response, (data) => {
+      setLogs(data?.logs ? data.logs : []);
+      setLogsModalVisible(true);
+    });
+  };
+
+  const fetchEvents = async () => {
+    setEventsLoading(true);
+    const response = await adminSettingsAPI.getEvents();
+    handleResp(
+      response,
+      (data) => {
+        setEvents(data?.list || []);
+        setCurrentEventId(data?.current_event_id || 0);
+        setEventsLoading(false);
+      },
+      () => {
+        setEventsLoading(false);
+      },
+    );
+  };
+
+  const isEditingEvent = (record: Event) => record.id === editingEventKey;
+
+  const handleEditEvent = (record: Event) => {
+    eventForm.setFieldsValue({ name: record.name });
+    setEditingEventKey(record.id);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingEventKey(null);
+  };
+
+  const handleSaveEvent = async (id: number) => {
+    try {
+      const values = await eventForm.validateFields();
+      const response = await adminSettingsAPI.updateEvent(id, values);
+      handleRespWithNotifySuccess(response, () => {
+        setEditingEventKey(null);
+        fetchEvents();
+      });
+    } catch (error) {
+      console.error("Form validation failed:", error);
+    }
+  };
+
+  const handleCreateEvent = async () => {
+    Modal.confirm({
+      title: "新增届次",
+      content: (
+        <Form
+          layout="vertical"
+          onFinish={() => {
+            Modal.destroyAll();
+          }}
+        >
+          <Form.Item
+            label="届次名称"
+            name="name"
+            rules={[
+              { required: true, message: "请输入届次名称" },
+              { max: 100, message: "届次名称最长100个字符" },
+            ]}
+          >
+            <Input placeholder="如：第一届运动会" />
+          </Form.Item>
+        </Form>
+      ),
+      okText: "确定",
+      cancelText: "取消",
+      onOk: async () => {
+        const name = (
+          document.querySelector(
+            'input[placeholder="如：第一届运动会"]',
+          ) as HTMLInputElement
+        )?.value;
+        if (!name) {
+          message.error("请输入届次名称");
+          return Promise.reject();
+        }
+        const response = await adminSettingsAPI.createEvent({ name });
+        return new Promise((resolve, reject) => {
+          handleRespWithNotifySuccess(
+            response,
+            () => {
+              fetchEvents();
+              resolve(true);
+            },
+            () => {
+              reject();
+            },
+          );
+        });
+      },
+    });
+  };
+
+  const handleDeleteEvent = async (id: number) => {
+    const response = await adminSettingsAPI.deleteEvent(id);
+    handleRespWithNotifySuccess(response, () => {
+      fetchEvents();
+    });
+  };
+
+  const handleSwitchEvent = async (id: number) => {
+    const response = await adminSettingsAPI.switchEvent(id);
+    handleRespWithNotifySuccess(response, () => {
+      fetchEvents();
+    });
+  };
+
+  const eventColumns = [
+    {
+      title: "ID",
+      dataIndex: "id",
+      key: "id",
+      width: 80,
+    },
+    {
+      title: "届次名称",
+      dataIndex: "name",
+      key: "name",
+      editable: true,
+    },
+    {
+      title: "操作",
+      key: "actions",
+      width: isMobile ? 200 : 200,
+      render: (_: any, record: Event) => {
+        const editable = isEditingEvent(record);
+        return editable ? (
+          <Space size="small" wrap>
+            <Typography.Link onClick={() => handleSaveEvent(record.id)}>
+              保存
+            </Typography.Link>
+            <Popconfirm title="确定取消编辑吗？" onConfirm={handleCancelEdit}>
+              <a>取消</a>
+            </Popconfirm>
+          </Space>
+        ) : (
+          <Space size="small" wrap>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEditEvent(record)}
+              disabled={
+                editingEventKey !== null && editingEventKey !== record.id
+              }
+            >
+              编辑
+            </Button>
+            <Popconfirm
+              title="确定删除此届次吗？"
+              description={
+                record.id === currentEventId
+                  ? "不能删除当前选中的运动会届次"
+                  : "删除后无法恢复，且不能删除有比赛项目关联的届次"
+              }
+              onConfirm={() => handleDeleteEvent(record.id)}
+              okText="确定"
+              cancelText="取消"
+              disabled={
+                record.id === currentEventId || editingEventKey !== null
+              }
+            >
+              <Button
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                disabled={
+                  record.id === currentEventId || editingEventKey !== null
+                }
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
+    },
+  ];
+
+  const mergedEventColumns = eventColumns.map((col) => {
+    if (!col.editable) {
+      return col;
+    }
+    return {
+      ...col,
+      onCell: (record: Event) => ({
+        record,
+        dataIndex: col.dataIndex,
+        title: col.title,
+        editing: isEditingEvent(record),
+      }),
+    };
+  });
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2}>系统设置</Title>
+        {isMobile ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              marginTop: 16,
+            }}
+          >
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchSettings}
+              loading={loading}
+              size="large"
+              style={{ width: "100%" }}
+            >
+              刷新
+            </Button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 16 }}>
+            <Space>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchSettings}
+                loading={loading}
+              >
+                刷新
+              </Button>
+            </Space>
+          </div>
+        )}
+      </div>
+
+      <Spin spinning={loading}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={handleSave}
+          autoComplete="off"
+        >
+          {/* 运动会届次管理 */}
+          <Card
+            title="运动会届次管理"
+            style={{ marginBottom: 24 }}
+            extra={
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreateEvent}
+              >
+                新增届次
+              </Button>
+            }
+          >
+            <Alert
+              message="说明"
+              description="管理运动会届次，选择单选框切换当前届次，切换后将影响比赛项目的创建和查询。点击编辑按钮可直接修改届次名称。当前选中的届次不能删除。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Form form={eventForm} component={false}>
+              <Table
+                components={{
+                  body: {
+                    cell: EditableCell,
+                  },
+                }}
+                dataSource={events}
+                columns={mergedEventColumns}
+                rowKey="id"
+                loading={eventsLoading}
+                pagination={false}
+                rowClassName="editable-row"
+                rowSelection={{
+                  type: "radio",
+                  selectedRowKeys: currentEventId ? [currentEventId] : [],
+                  onChange: (selectedRowKeys) => {
+                    const selectedId = selectedRowKeys[0] as number;
+                    if (selectedId && selectedId !== currentEventId) {
+                      handleSwitchEvent(selectedId);
+                    }
+                  },
+                  getCheckboxProps: () => ({
+                    disabled: editingEventKey !== null,
+                  }),
+                }}
+              />
+            </Form>
+          </Card>
+
+          {/* 网站设置 */}
+          <Card title="网站设置" style={{ marginBottom: 24 }}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="网站名称"
+                  name="website.name"
+                  rules={[{ required: true, message: "请输入网站名称" }]}
+                >
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="域名" name="website.domain">
+                  <Input placeholder="如：example.com" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="ICP备案号" name="website.icp_beian">
+                  <Input placeholder="如：京ICP备12345678号" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="公安备案号" name="website.public_sec_beian">
+                  <Input placeholder="如：京公网安备11010802012345号" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* 钉钉设置 */}
+          <Card title="钉钉设置" style={{ marginBottom: 24 }}>
+            <Alert
+              message="钉钉设置说明"
+              description={
+                <>
+                  配置钉钉登录需要在
+                  <a
+                    href="https://open-dev.dingtalk.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    钉钉开发者后台
+                  </a>
+                  创建应用并获取相关参数
+                </>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="App Key" name="dingtalk.app_key">
+                  <Input.Password placeholder="钉钉应用的AppKey" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="App Secret" name="dingtalk.app_secret">
+                  <Input.Password placeholder="钉钉应用的AppSecret" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="Agent ID" name="dingtalk.agent_id">
+                  <Input placeholder="钉钉应用的AgentId" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Corp ID" name="dingtalk.corp_id">
+                  <Input placeholder="钉钉企业的CorpId" />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* 比赛设置 */}
+          <Card title="比赛设置" style={{ marginBottom: 24 }}>
+            <Alert
+              message="说明"
+              description="设置项目征集、投票和报名的时间范围与最大报名人数。留空表示不限制时间。人数限制为0则表示不限制每人报名项目数。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="项目征集时间" name="submission_time">
+                  <RangePicker
+                    showTime
+                    format="YYYY-MM-DD HH:mm:ss"
+                    placeholder={["开始时间", "结束时间"]}
+                    style={{ width: "100%" }}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="项目投票时间" name="voting_time">
+                  <RangePicker
+                    showTime
+                    format="YYYY-MM-DD HH:mm:ss"
+                    placeholder={["开始时间", "结束时间"]}
+                    style={{ width: "100%" }}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item label="项目报名时间" name="registration_time">
+                  <RangePicker
+                    showTime
+                    format="YYYY-MM-DD HH:mm:ss"
+                    placeholder={["开始时间", "结束时间"]}
+                    style={{ width: "100%" }}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="每人最多报名个人项目数"
+                  name="max_registrations_per_person"
+                  extra="仅统计个人比赛，团体比赛不计入限制。0表示无限制"
+                >
+                  <InputNumber min={0} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* 看板设置 */}
+          <Card title="看板设置" style={{ marginBottom: 24 }}>
+            <Alert
+              message="说明"
+              description="控制公开看板的显示状态。关闭后用户将无法访问公开看板页面。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Form.Item
+              label="启用公开看板"
+              name="dashboard.enabled"
+              valuePropName="checked"
+            >
+              <Switch checkedChildren="启用" unCheckedChildren="关闭" />
+            </Form.Item>
+          </Card>
+
+          {/* 得分映射配置 */}
+          <Card title="得分映射配置" style={{ marginBottom: 24 }}>
+            <Alert
+              message="说明"
+              description="配置不同名次对应的得分。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Title level={5}>团体赛得分映射</Title>
+                <Form.List name="team_points_mapping">
+                  {(fields, { add, remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <Space
+                          key={key}
+                          style={{ display: "flex", marginBottom: 8 }}
+                          align="baseline"
+                        >
+                          <Form.Item
+                            {...restField}
+                            name={[name, "rank"]}
+                            rules={[
+                              { required: true, message: "请输入名次" },
+                              {
+                                pattern: /^[1-9]\d*$/,
+                                message: "名次必须是正整数",
+                              },
+                            ]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Input
+                              placeholder="名次"
+                              addonBefore="第"
+                              addonAfter="名"
+                              style={{ width: 120 }}
+                            />
+                          </Form.Item>
+                          <Form.Item
+                            {...restField}
+                            name={[name, "points"]}
+                            rules={[{ required: true, message: "请输入得分" }]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <InputNumber
+                              min={0}
+                              step={0.1}
+                              placeholder="得分"
+                              style={{ width: 100 }}
+                            />
+                          </Form.Item>
+                          <DeleteOutlined
+                            onClick={() => remove(name)}
+                            style={{ color: "#ff4d4f", cursor: "pointer" }}
+                          />
+                        </Space>
+                      ))}
+                      <Form.Item>
+                        <Button
+                          type="dashed"
+                          onClick={() => add()}
+                          block
+                          icon={<PlusOutlined />}
+                        >
+                          添加名次映射
+                        </Button>
+                      </Form.Item>
+                    </>
+                  )}
+                </Form.List>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <Title level={5}>个人赛得分映射</Title>
+                <Form.List name="individual_points_mapping">
+                  {(fields, { add, remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <Space
+                          key={key}
+                          style={{ display: "flex", marginBottom: 8 }}
+                          align="baseline"
+                        >
+                          <Form.Item
+                            {...restField}
+                            name={[name, "rank"]}
+                            rules={[
+                              { required: true, message: "请输入名次" },
+                              {
+                                pattern: /^[1-9]\d*$/,
+                                message: "名次必须是正整数",
+                              },
+                            ]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Input
+                              placeholder="名次"
+                              addonBefore="第"
+                              addonAfter="名"
+                              style={{ width: 120 }}
+                            />
+                          </Form.Item>
+                          <Form.Item
+                            {...restField}
+                            name={[name, "points"]}
+                            rules={[{ required: true, message: "请输入得分" }]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <InputNumber
+                              min={0}
+                              step={0.1}
+                              placeholder="得分"
+                              style={{ width: 100 }}
+                            />
+                          </Form.Item>
+                          <DeleteOutlined
+                            onClick={() => remove(name)}
+                            style={{ color: "#ff4d4f", cursor: "pointer" }}
+                          />
+                        </Space>
+                      ))}
+                      <Form.Item>
+                        <Button
+                          type="dashed"
+                          onClick={() => add()}
+                          block
+                          icon={<PlusOutlined />}
+                        >
+                          添加名次映射
+                        </Button>
+                      </Form.Item>
+                    </>
+                  )}
+                </Form.List>
+              </Col>
+            </Row>
+          </Card>
+
+          {/* 危险操作 */}
+          <Card title="危险操作" style={{ marginBottom: 24 }}>
+            <Alert
+              message="警告"
+              description="以下操作具有风险，请谨慎使用"
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Space>
+              <Button
+                danger
+                icon={<SyncOutlined />}
+                loading={rebuildLoading}
+                onClick={handleRebuildMapping}
+              >
+                重建家长-学生映射
+              </Button>
+              <Button icon={<FileTextOutlined />} onClick={fetchLogs}>
+                查看重建日志
+              </Button>
+            </Space>
+          </Card>
+
+          <Form.Item style={{ textAlign: "right", marginTop: 24 }}>
+            <Button
+              type="primary"
+              size="large"
+              htmlType="submit"
+              loading={saving}
+              icon={<SaveOutlined />}
+            >
+              保存设置
+            </Button>
+          </Form.Item>
+        </Form>
+      </Spin>
+
+      {/* 日志查看模态框 */}
+      <Modal
+        title="重建映射日志"
+        open={logsModalVisible}
+        onCancel={() => setLogsModalVisible(false)}
+        footer={[
+          <Button key="refresh" onClick={fetchLogs}>
+            刷新日志
+          </Button>,
+          <Button key="close" onClick={() => setLogsModalVisible(false)}>
+            关闭
+          </Button>,
+        ]}
+        width={800}
+      >
+        {logs.length > 0 ? (
+          <List
+            dataSource={logs}
+            renderItem={(log) => (
+              <List.Item>
+                <Text code style={{ whiteSpace: "pre-wrap" }}>
+                  {log}
+                </Text>
+              </List.Item>
+            )}
+            style={{ maxHeight: 400, overflow: "auto" }}
+          />
+        ) : (
+          <div style={{ textAlign: "center", padding: "40px" }}>
+            <Text type="secondary">暂无日志记录</Text>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
+
+export default Settings;
