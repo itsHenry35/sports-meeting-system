@@ -636,7 +636,7 @@ const ScoreInput: React.FC = () => {
               const isTeamCompetition =
                 selectedCompetition?.competition_type === "team";
               // 团体赛：按班级去重
-              const displayList = isTeamCompetition
+              let displayList = isTeamCompetition
                 ? Array.from(
                     new Map(
                       registrations
@@ -645,6 +645,17 @@ const ScoreInput: React.FC = () => {
                     ).values(),
                   )
                 : registrations;
+
+              // 按班级和姓名排序
+              displayList = [...displayList].sort((a, b) => {
+                const classCompare = chineseSort(a.class_name, b.class_name);
+                if (classCompare !== 0) return classCompare;
+                // 团体赛只按班级排序，个人赛还要按学生姓名排序
+                if (!isTeamCompetition) {
+                  return a.student_name.localeCompare(b.student_name, "zh-CN");
+                }
+                return 0;
+              });
 
               return (
                 <>
