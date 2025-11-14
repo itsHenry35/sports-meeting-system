@@ -38,16 +38,16 @@ const Dashboard: React.FC = () => {
   const fetchStats = async () => {
     setLoading(true);
     const promises: Promise<any>[] = [];
-    const promiseTypes: string[] = [];
 
     // 根据权限获取不同的数据
     if (hasPermission(PERMISSIONS.PROJECT_MANAGEMENT)) {
+      // 请求总比赛数，以及按状态的统计
       promises.push(
+        adminCompetitionAPI.getCompetitions({}), // total competitions
         adminCompetitionAPI.getCompetitions({ status: "pending_approval" }),
         adminCompetitionAPI.getCompetitions({ status: "pending_score_review" }),
         adminCompetitionAPI.getCompetitions({ status: "completed" }),
       );
-      promiseTypes.push("pendingApproval", "pendingScoreReview", "completed");
     }
 
     const results = await Promise.allSettled(promises);
@@ -56,11 +56,18 @@ const Dashboard: React.FC = () => {
 
     // 解析项目统计
     if (hasPermission(PERMISSIONS.PROJECT_MANAGEMENT)) {
+      const totalResult = results[resultIndex++];
       const pendingApprovalResult = results[resultIndex++];
       const pendingScoreReviewResult = results[resultIndex++];
       const completedResult = results[resultIndex++];
 
-      if (pendingApprovalResult.status === "fulfilled") {
+      if (totalResult && totalResult.status === "fulfilled") {
+        handleRespWithoutNotify(totalResult.value, (_, pagination) => {
+          newStats.totalCompetitions = pagination?.total || 0;
+        });
+      }
+
+      if (pendingApprovalResult && pendingApprovalResult.status === "fulfilled") {
         handleRespWithoutNotify(
           pendingApprovalResult.value,
           (_, pagination) => {
@@ -69,7 +76,7 @@ const Dashboard: React.FC = () => {
         );
       }
 
-      if (pendingScoreReviewResult.status === "fulfilled") {
+      if (pendingScoreReviewResult && pendingScoreReviewResult.status === "fulfilled") {
         handleRespWithoutNotify(
           pendingScoreReviewResult.value,
           (_, pagination) => {
@@ -78,7 +85,7 @@ const Dashboard: React.FC = () => {
         );
       }
 
-      if (completedResult.status === "fulfilled") {
+      if (completedResult && completedResult.status === "fulfilled") {
         handleRespWithoutNotify(completedResult.value, (_, pagination) => {
           newStats.completedCompetitions = pagination?.total || 0;
         });
