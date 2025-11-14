@@ -239,11 +239,11 @@ func GetScoresByStudentID(studentID int) ([]*types.Score, error) {
 		return nil, err
 	}
 
-	// 1. 查询个人赛成绩（student_id = studentID）
+	// 1. 查询个人赛成绩（student_id = studentID），只返回已审核的成绩
 	var individualScores []*types.Score
 	err := db.Preload("Competition").Preload("Student.Class").
 		Joins("JOIN competitions ON competitions.id = scores.competition_id").
-		Where("scores.student_id = ? AND competitions.event_id = ?", studentID, currentEventID).
+		Where("scores.student_id = ? AND competitions.event_id = ? AND competitions.status = ?", studentID, currentEventID, types.StatusCompleted).
 		Find(&individualScores).Error
 	if err != nil {
 		return nil, err
@@ -264,9 +264,10 @@ func GetScoresByStudentID(studentID int) ([]*types.Score, error) {
 		}
 
 		if len(registeredTeamCompetitionIDs) > 0 {
-			// 查询这些团体比赛的班级成绩
+			// 查询这些团体比赛的班级成绩，只返回已审核的成绩
 			err = db.Preload("Competition").Preload("Class").
-				Where("class_id = ? AND competition_id IN ?", student.ClassID, registeredTeamCompetitionIDs).
+				Joins("JOIN competitions ON competitions.id = scores.competition_id").
+				Where("scores.class_id = ? AND scores.competition_id IN ? AND competitions.status = ?", student.ClassID, registeredTeamCompetitionIDs, types.StatusCompleted).
 				Find(&teamScores).Error
 			if err != nil {
 				return nil, err
