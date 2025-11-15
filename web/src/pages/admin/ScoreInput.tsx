@@ -20,6 +20,7 @@ import {
   SaveOutlined,
   FormOutlined,
   FileExcelOutlined,
+  FilePdfOutlined,
 } from "@ant-design/icons";
 import { adminScoreInputAPI } from "../../api/admin/score";
 import { Competition, Score, StudentScore, Registration } from "../../types";
@@ -31,6 +32,7 @@ import { getRankingDisplayForTable } from "../../utils";
 import { useIsMobile } from "../../utils/mobile";
 import { chineseSort } from "../../utils/sort";
 import { adminRegistrationAPI } from "../../api/admin/registration";
+import CertificateExport from "../../components/CertificateExport";
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -56,6 +58,8 @@ const ScoreInput: React.FC = () => {
     student_scores: [],
   });
   const [exportLoading, setExportLoading] = useState(false);
+  const [certificateModalVisible, setCertificateModalVisible] = useState(false);
+  const [allCompletedScores, setAllCompletedScores] = useState<Score[]>([]);
 
   const fetchCompetitions = async () => {
     setLoading(true);
@@ -252,6 +256,50 @@ const ScoreInput: React.FC = () => {
     handleRespWithNotifySuccess(response, async () => {
       await fetchScores(selectedCompetition.id);
     });
+  };
+
+  const handleExportCertificates = async () => {
+    try {
+      setLoading(true);
+
+      // 获取所有已完成的比赛
+      const competitionsResponse = await adminScoreInputAPI.getCompetitions({
+        status: "completed",
+      });
+      let completedCompetitions: Competition[] = [];
+      handleResp(competitionsResponse, (data) => {
+        completedCompetitions = data;
+      });
+
+      if (completedCompetitions.length === 0) {
+        message.warning("没有已完成的比赛可导出奖状");
+        setLoading(false);
+        return;
+      }
+
+      let allScores: Score[] = [];
+      for (const competition of completedCompetitions) {
+        const scoresResponse = await adminScoreInputAPI.getCompetitionScores(
+          competition.id,
+        );
+        handleResp(scoresResponse, (data) => {
+          allScores = allScores.concat(
+            data.map((score) => ({
+              ...score,
+              competition_id: competition.id,
+            })),
+          );
+        });
+      }
+      setAllCompletedScores(allScores);
+
+      setCertificateModalVisible(true);
+      setLoading(false);
+    } catch (error) {
+      console.error("获取成绩数据失败:", error);
+      message.error("获取成绩数据失败");
+      setLoading(false);
+    }
   };
 
   // 导出全部成绩（按比赛完整模式）
@@ -507,6 +555,15 @@ const ScoreInput: React.FC = () => {
             >
               导出成绩
             </Button>
+            <Button
+              icon={<FilePdfOutlined />}
+              onClick={handleExportCertificates}
+              loading={loading}
+              size="large"
+              style={{ width: "100%" }}
+            >
+              导出奖状
+            </Button>
           </div>
         ) : (
           <div style={{ marginTop: 16 }}>
@@ -558,6 +615,13 @@ const ScoreInput: React.FC = () => {
               >
                 导出成绩
               </Button>
+              <Button
+                icon={<FilePdfOutlined />}
+                onClick={handleExportCertificates}
+                loading={loading}
+              >
+                导出奖状
+              </Button>
             </Space>
           </div>
         )}
@@ -569,16 +633,18 @@ const ScoreInput: React.FC = () => {
           extra={
             <Space>
               {scores?.length > 0 && (
-                <Popconfirm
-                  title="确定删除所有成绩吗？"
-                  onConfirm={handleDeleteScores}
-                  okText="确定"
-                  cancelText="取消"
-                >
-                  <Button danger icon={<DeleteOutlined />}>
-                    删除成绩
-                  </Button>
-                </Popconfirm>
+                <>
+                  <Popconfirm
+                    title="确定删除所有成绩吗？"
+                    onConfirm={handleDeleteScores}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button danger icon={<DeleteOutlined />}>
+                      删除成绩
+                    </Button>
+                  </Popconfirm>
+                </>
               )}
               <Button
                 type="primary"
@@ -737,6 +803,13 @@ const ScoreInput: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* 奖状导出模态框 */}
+      <CertificateExport
+        visible={certificateModalVisible}
+        onClose={() => setCertificateModalVisible(false)}
+        scores={allCompletedScores}
+      />
     </div>
   );
 };

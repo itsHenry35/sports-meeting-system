@@ -23,8 +23,12 @@ export const adminScoreInputAPI = {
   /**
    * 获取比赛列表（用于成绩录入）
    */
-  getCompetitions: async (): Promise<ApiResponse<Competition[]>> => {
-    return await callApi(() => api.get("/admin/scores/input/competitions"));
+  getCompetitions: async (params?: {
+    status?: string;
+  }): Promise<ApiResponse<Competition[]>> => {
+    return await callApi(() =>
+      api.get("/admin/scores/input/competitions", { params }),
+    );
   },
 
   /**

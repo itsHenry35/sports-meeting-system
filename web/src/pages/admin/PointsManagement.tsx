@@ -22,6 +22,7 @@ import {
   TeamOutlined,
   UserOutlined,
   FileExcelOutlined,
+  FilePdfOutlined,
 } from "@ant-design/icons";
 import { pointsAPI } from "../../api/admin/points";
 import { adminClassAPI } from "../../api/admin/student";
@@ -37,6 +38,7 @@ import type {
   PointDetail,
   Class,
 } from "../../types";
+import CertificateExport from "../../components/CertificateExport";
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -57,6 +59,7 @@ const PointsManagement: React.FC = () => {
   const [detailType, setDetailType] = useState<"class" | "student">("class"); // 标识当前查看的是班级还是学生明细
   const [classes, setClasses] = useState<Class[]>([]);
   const [exportLoading, setExportLoading] = useState(false);
+  const [certificateModalVisible, setCertificateModalVisible] = useState(false);
 
   // 获取班级列表
   const fetchClasses = async () => {
@@ -569,6 +572,13 @@ const PointsManagement: React.FC = () => {
           >
             导出团体得分
           </Button>
+          <Button
+            icon={<FilePdfOutlined />}
+            onClick={() => setCertificateModalVisible(true)}
+            loading={classLoading}
+          >
+            导出奖状
+          </Button>
         </Space>
       </Card>
 
@@ -695,6 +705,13 @@ const PointsManagement: React.FC = () => {
           pagination={{ pageSize: 10 }}
         />
       </Modal>
+
+      {/* 奖状导出模态框 */}
+      <CertificateExport
+        visible={certificateModalVisible}
+        onClose={() => setCertificateModalVisible(false)}
+        classRankings={classPoints}
+      />
     </div>
   );
 };

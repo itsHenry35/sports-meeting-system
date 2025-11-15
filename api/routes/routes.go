@@ -184,6 +184,7 @@ func SetupRouter(staticFS fs.FS) *gin.Engine {
 		"asset-manifest.json",
 		"apple-touch-icon.png",
 		"effect.mp3",
+		"SourceHanSansCN-Medium.ttf",
 	}
 
 	// 为每个静态文件注册路由
