@@ -385,6 +385,7 @@ const ScoreInput: React.FC = () => {
           return {
             competition: comp,
             registrations,
+            scores,
             scoreMap,
           };
         }),
@@ -394,37 +395,80 @@ const ScoreInput: React.FC = () => {
       const { exportExcel, createMerge } = await import("../../utils/excel");
 
       const sheets = competitionsWithData.map(
-        ({ competition, registrations, scoreMap }) => {
+        ({ competition, registrations, scores, scoreMap }) => {
           const sheetData: any[][] = [];
           const merges: any[] = [];
+          const isTeamCompetition = competition.competition_type === "team";
 
-          // 添加比赛名称作为标题（合并6列）
-          sheetData.push([competition.name, "", "", "", "", ""]);
-          merges.push(createMerge(0, 0, 0, 5));
+          // 根据比赛类型决定合并列数
+          const headerColCount = isTeamCompetition ? 5 : 6;
+          
+          // 添加比赛名称作为标题
+          const titleRow = [competition.name];
+          for (let i = 1; i < headerColCount; i++) {
+            titleRow.push("");
+          }
+          sheetData.push(titleRow);
+          merges.push(createMerge(0, 0, 0, headerColCount - 1));
 
-          // 添加表头
-          sheetData.push(["序号", "班级", "姓名", "成绩", "名次", "得分"]);
+          // 添加表头（团体比赛不显示"姓名"列）
+          if (isTeamCompetition) {
+            sheetData.push(["序号", "班级", "成绩", "名次", "得分"]);
+          } else {
+            sheetData.push(["序号", "班级", "姓名", "成绩", "名次", "得分"]);
+          }
 
-          // 添加学生数据，根据报名顺序生成序号
-          registrations.forEach((reg, index) => {
-            const score = reg.student_id ? scoreMap.get(reg.student_id) : null;
-            sheetData.push([
-              index + 1, // 序号基于报名列表
-              reg.class_name,
-              reg.student_name,
-              score ? `${score.score} ${competition.unit}` : "", // 成绩
-              score && score.ranking ? score.ranking : "", // 名次
-              score && score.point !== undefined && score.point !== null
-                ? score.point
-                : "", // 得分
-            ]);
-          });
+          // 处理数据行
+          if (isTeamCompetition) {
+            // 团体比赛：按班级去重，每个班级只显示一次
+            const classMap = new Map<number, Registration>();
+            registrations.forEach((reg) => {
+              if (reg.class_id && !classMap.has(reg.class_id)) {
+                classMap.set(reg.class_id, reg);
+              }
+            });
+            
+            // 获取去重后的班级列表并按班级名称排序
+            const uniqueClasses = Array.from(classMap.values()).sort((a, b) =>
+              chineseSort(a.class_name, b.class_name)
+            );
+
+            // 为每个班级添加一行数据
+            uniqueClasses.forEach((reg, index) => {
+              // 团体赛的成绩是按 class_id 存储的
+              const score = scores.find((s) => s.class_id === reg.class_id);
+              sheetData.push([
+                index + 1,
+                reg.class_name,
+                score ? `${score.score} ${competition.unit}` : "",
+                score && score.ranking ? score.ranking : "",
+                score && score.point !== undefined && score.point !== null
+                  ? score.point
+                  : "",
+              ]);
+            });
+          } else {
+            // 个人比赛：显示每个学生的数据
+            registrations.forEach((reg, index) => {
+              const score = reg.student_id ? scoreMap.get(reg.student_id) : null;
+              sheetData.push([
+                index + 1,
+                reg.class_name,
+                reg.student_name,
+                score ? `${score.score} ${competition.unit}` : "",
+                score && score.ranking ? score.ranking : "",
+                score && score.point !== undefined && score.point !== null
+                  ? score.point
+                  : "",
+              ]);
+            });
+          }
 
           return {
             name: competition.name.substring(0, 31), // Excel sheet 名称限制31字符
             data: sheetData,
             merges: merges,
-            colWidths: [5, 10, 10, 10, 5, 5],
+            colWidths: isTeamCompetition ? [5, 10, 10, 5, 5] : [5, 10, 10, 10, 5, 5],
           };
         },
       );
