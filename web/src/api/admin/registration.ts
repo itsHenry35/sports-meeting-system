@@ -36,7 +36,7 @@ export const adminRegistrationAPI = {
   },
 
   /**
-   * 获取比赛报名学生列表（支持班级scope）
+   * 获取比赛报名学生列表
    */
   getCompetitionRegistrations: async (
     id: number,
@@ -47,7 +47,7 @@ export const adminRegistrationAPI = {
   },
 
   /**
-   * 获取学生列表（用于报名管理，支持班级scope）
+   * 获取学生列表（用于报名管理）
    */
   getStudents: async (params?: {
     page?: number;
@@ -60,14 +60,14 @@ export const adminRegistrationAPI = {
   },
 
   /**
-   * 获取班级列表（用于报名管理，支持班级scope）
+   * 获取班级列表（用于报名管理）
    */
   getClasses: async (): Promise<ApiResponse<Class[]>> => {
     return await callApi(() => api.get("/admin/registrations/classes"));
   },
 
   /**
-   * 管理员替学生报名（支持班级scope）
+   * 管理员替学生报名
    */
   registerStudent: async (
     data: AdminRegisterRequest,
@@ -76,7 +76,7 @@ export const adminRegistrationAPI = {
   },
 
   /**
-   * 管理员替学生取消报名（支持班级scope）
+   * 管理员替学生取消报名
    */
   unregisterStudent: async (
     competitionId: number,
@@ -90,7 +90,7 @@ export const adminRegistrationAPI = {
   },
 
   /**
-   * 获取项目检查清单（仅全局管理员）
+   * 获取项目检查清单
    */
   getCompetitionChecklist: async (): Promise<
     ApiResponse<

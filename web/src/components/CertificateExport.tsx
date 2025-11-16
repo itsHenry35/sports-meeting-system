@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Modal,
   Form,
@@ -8,12 +8,15 @@ import {
   Button,
   message,
   Radio,
+  Select,
 } from "antd";
 import { FilePdfOutlined } from "@ant-design/icons";
 import JSZip from "jszip";
 import dayjs, { Dayjs } from "dayjs";
 import { generateCertificatePDF } from "./CertificateDocument";
-import { Score, ClassPointsSummary } from "../types";
+import { Score, ClassPointsSummary, Registration } from "../types";
+import { adminRegistrationAPI } from "../api/admin/registration";
+import { handleResp } from "../utils/handleResp";
 
 interface CertificateExportProps {
   visible: boolean;
@@ -28,6 +31,7 @@ interface CertificateFormData {
   date: Dayjs;
   maxRanking: number;
   exportType: "separate" | "merged"; // 导出类型：单独PDF或合并PDF
+  selectedTeamCompetitions?: number[]; // 选中的集体项目ID列表（为每个参与者生成奖状，保持班级排名）
   // 字体大小配置
   fontSize1: number; // 第一行字体大小
   fontSize2: number; // 第二行字体大小
@@ -50,10 +54,30 @@ const CertificateExport: React.FC<CertificateExportProps> = ({
 }) => {
   const [form] = Form.useForm<CertificateFormData>();
   const [loading, setLoading] = useState(false);
+  const [teamCompetitionOptions, setTeamCompetitionOptions] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
 
   // 判断是哪种模式
   const isClassRankingMode = !!classRankings;
   const isScoreMode = !!scores;
+
+  // 从 scores 中提取集体项目（student_name === "集体"）
+  useEffect(() => {
+    if (visible && isScoreMode && scores) {
+      const teamCompMap = new Map<number, string>();
+      scores.forEach((score) => {
+        if (score.student_name === "集体" && !teamCompMap.has(score.competition_id)) {
+          teamCompMap.set(score.competition_id, score.competition_name);
+        }
+      });
+      const teamComps = Array.from(teamCompMap.entries()).map(([id, name]) => ({
+        id,
+        name,
+      }));
+      setTeamCompetitionOptions(teamComps);
+    }
+  }, [visible, isScoreMode, scores]);
 
   const handleExport = async (values: CertificateFormData) => {
     try {
@@ -128,32 +152,108 @@ const CertificateExport: React.FC<CertificateExportProps> = ({
           return;
         }
 
-        certificates = qualifiedScores.map((score) => {
-          // 如果有student_name，说明是个人项目，显示"班级 姓名"
-          // 如果没有student_name，说明是团体项目，只显示"班级"
-          const participantName = score.student_name
-            ? `${score.class_name} ${score.student_name}`
-            : score.class_name;
+        // 获取选中的集体项目ID列表
+        const selectedTeamCompIds = values.selectedTeamCompetitions || [];
 
-          return {
-            participantName,
-            schoolName: values.schoolName,
-            eventName: values.eventName,
-            competitionName: score.competition_name,
-            ranking: score.ranking ?? 0,
-            date: values.date.format("YYYY-MM-DD"),
-            fontSize1: values.fontSize1,
-            fontSize2: values.fontSize2,
-            fontSize3: values.fontSize3,
-            fontSizeSchool: values.fontSizeSchool,
-            fontSizeDate: values.fontSizeDate,
-            yPosition1: values.yPosition1,
-            yPosition2: values.yPosition2,
-            yPosition3: values.yPosition3,
-            yPositionSchool: values.yPositionSchool,
-            yPositionDate: values.yPositionDate,
-          };
-        });
+        // 批量获取选中集体项目的报名数据
+        const teamCompRegistrations = new Map<number, Map<number, Registration[]>>();
+        
+        if (selectedTeamCompIds.length > 0) {
+          for (const compId of selectedTeamCompIds) {
+            const registrationsResponse = await adminRegistrationAPI.getCompetitionRegistrations(
+              compId,
+            );
+            
+            await new Promise<void>((resolve) => {
+              handleResp(
+                registrationsResponse,
+                (registrations: Registration[]) => {
+                  // 按 class_id 分组存储
+                  const classMap = new Map<number, Registration[]>();
+                  registrations.forEach((reg) => {
+                    const existing = classMap.get(reg.class_id);
+                    if (existing) {
+                      existing.push(reg);
+                    } else {
+                      classMap.set(reg.class_id, [reg]);
+                    }
+                  });
+                  teamCompRegistrations.set(compId, classMap);
+                  resolve();
+                },
+                () => {
+                  resolve();
+                },
+              );
+            });
+          }
+        }
+
+        // 为每个符合条件的成绩生成奖状
+        for (const score of qualifiedScores) {
+          // 判断是否是集体项目且被选中
+          const isSelectedTeamComp = 
+            score.student_name === "集体" && 
+            selectedTeamCompIds.includes(score.competition_id);
+
+          if (isSelectedTeamComp && score.class_id) {
+            // 集体项目且被选中：从缓存中获取该班级的报名者，为每人生成奖状（保持原排名）
+            const classMap = teamCompRegistrations.get(score.competition_id);
+            const classRegistrations = classMap?.get(score.class_id) || [];
+            
+            // 为每个报名者生成奖状，保持原有排名
+            classRegistrations.forEach((registration) => {
+              certificates.push({
+                participantName: `${registration.class_name} ${registration.student_name}`,
+                schoolName: values.schoolName,
+                eventName: values.eventName,
+                competitionName: score.competition_name,
+                ranking: score.ranking ?? 0, // 保持原有排名
+                date: values.date.format("YYYY-MM-DD"),
+                fontSize1: values.fontSize1,
+                fontSize2: values.fontSize2,
+                fontSize3: values.fontSize3,
+                fontSizeSchool: values.fontSizeSchool,
+                fontSizeDate: values.fontSizeDate,
+                yPosition1: values.yPosition1,
+                yPosition2: values.yPosition2,
+                yPosition3: values.yPosition3,
+                yPositionSchool: values.yPositionSchool,
+                yPositionDate: values.yPositionDate,
+              });
+            });
+          } else {
+            // 个人项目或未被选中的集体项目：按正常逻辑生成
+            const participantName = score.student_name && score.student_name !== "集体"
+              ? `${score.class_name} ${score.student_name}`
+              : score.class_name;
+
+            certificates.push({
+              participantName,
+              schoolName: values.schoolName,
+              eventName: values.eventName,
+              competitionName: score.competition_name,
+              ranking: score.ranking ?? 0,
+              date: values.date.format("YYYY-MM-DD"),
+              fontSize1: values.fontSize1,
+              fontSize2: values.fontSize2,
+              fontSize3: values.fontSize3,
+              fontSizeSchool: values.fontSizeSchool,
+              fontSizeDate: values.fontSizeDate,
+              yPosition1: values.yPosition1,
+              yPosition2: values.yPosition2,
+              yPosition3: values.yPosition3,
+              yPositionSchool: values.yPositionSchool,
+              yPositionDate: values.yPositionDate,
+            });
+          }
+        }
+
+        if (certificates.length === 0) {
+          message.warning("没有可导出的奖状");
+          setLoading(false);
+          return;
+        }
       } else {
         message.error("没有可导出的数据");
         setLoading(false);
@@ -337,6 +437,28 @@ const CertificateExport: React.FC<CertificateExportProps> = ({
             placeholder="例如：8（只给前8名颁发奖状）"
           />
         </Form.Item>
+
+        {isScoreMode && teamCompetitionOptions.length > 0 && (
+          <Form.Item
+            label="选择要为每个参与者颁发奖状的集体项目（可选）"
+            name="selectedTeamCompetitions"
+            extra='选中的集体项目将为该班级的每个参与者生成奖状（保持该班级的原有排名），例如：高一1班获得第1名，选中后会为该班所有参与者各生成一张"第1名"的奖状'
+          >
+            <Select
+              mode="multiple"
+              placeholder="可选择一个或多个集体项目"
+              style={{ width: "100%" }}
+              maxTagCount="responsive"
+              allowClear
+            >
+              {teamCompetitionOptions.map((comp) => (
+                <Select.Option key={comp.id} value={comp.id}>
+                  {comp.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        )}
 
         <Form.Item label="字体大小配置">
           <Input.Group compact>

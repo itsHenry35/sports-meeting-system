@@ -307,31 +307,21 @@ const ScoreInput: React.FC = () => {
     setExportLoading(true);
     try {
       // 获取所有已完成的比赛
-      const compsResponse = await adminScoreInputAPI.getCompetitions();
-      let allCompetitions: Competition[] = [];
-
-      await new Promise<void>((resolve, reject) => {
-        handleResp(
-          compsResponse,
-          (comps) => {
-            allCompetitions = comps.filter(
-              (c: Competition) => c.status === "completed",
-            );
-            resolve();
-          },
-          () => {
-            reject(new Error("获取比赛列表失败"));
-          },
-        );
+      const competitionsResponse = await adminScoreInputAPI.getCompetitions({
+        status: "completed",
+      });
+      let completedCompetitions: Competition[] = [];
+      handleResp(competitionsResponse, (data) => {
+        completedCompetitions = data;
       });
 
-      if (allCompetitions.length === 0) {
+      if (completedCompetitions.length === 0) {
         throw new Error("没有已完成的比赛");
       }
 
       // 获取每个比赛的报名和成绩数据
       const competitionsWithData = await Promise.all(
-        allCompetitions.map(async (comp) => {
+        completedCompetitions.map(async (comp) => {
           // 获取报名数据
           const regResponse =
             await adminRegistrationAPI.getCompetitionRegistrations(comp.id);
