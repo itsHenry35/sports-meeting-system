@@ -11,6 +11,8 @@ export interface CreateCompetitionRequest {
   max_participants_per_class: number; // 每班最多报名人数
   image?: string;
   unit: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 export interface UpdateCompetitionRequest {
@@ -23,6 +25,8 @@ export interface UpdateCompetitionRequest {
   image?: string;
   unit?: string;
   gender?: number;
+  start_time?: string;
+  end_time?: string;
 }
 
 /**
@@ -36,7 +40,7 @@ export const adminCompetitionAPI = {
     page?: number;
     page_size?: number;
     status?: string;
-    sort_by?: "name" | "votes";
+    sort_by?: "name" | "votes" | "schedule";
   }): Promise<PaginatedResponse<Competition[]>> => {
     return await callPaginatedApi(() =>
       api.get("/admin/competitions", { params }),

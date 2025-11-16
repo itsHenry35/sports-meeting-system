@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import dayjs from "dayjs";
 import {
   Card,
   Table,
@@ -19,6 +20,7 @@ import {
   Dropdown,
   message,
   InputNumber,
+  DatePicker,
 } from "antd";
 import {
   PlusOutlined,
@@ -63,7 +65,7 @@ const CompetitionManagement: React.FC = () => {
     useState<Competition | null>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [sortBy, setSortBy] = useState<"name" | "votes">("name");
+  const [sortBy, setSortBy] = useState<"name" | "votes" | "schedule">("schedule");
   const [batchResultsVisible, setBatchResultsVisible] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [batchModalVisible, setBatchModalVisible] = useState(false);
@@ -302,6 +304,8 @@ const CompetitionManagement: React.FC = () => {
         unit: competition.unit,
         min_participants_per_class: competition.min_participants_per_class || 0,
         max_participants_per_class: competition.max_participants_per_class || 0,
+        start_time: competition.start_time ? dayjs(competition.start_time) : null,
+        end_time: competition.end_time ? dayjs(competition.end_time) : null,
       });
     } else {
       form.resetFields();
@@ -343,6 +347,8 @@ const CompetitionManagement: React.FC = () => {
           min_participants_per_class: values.min_participants_per_class,
           max_participants_per_class: values.max_participants_per_class,
           image: imageBase64,
+          start_time: values.start_time?.toISOString(),
+          end_time: values.end_time?.toISOString(),
         },
       );
       handleRespWithNotifySuccess(response, () => {
@@ -360,6 +366,8 @@ const CompetitionManagement: React.FC = () => {
         min_participants_per_class: values.min_participants_per_class,
         max_participants_per_class: values.max_participants_per_class,
         image: imageBase64,
+        start_time: values.start_time?.toISOString(),
+        end_time: values.end_time?.toISOString(),
       });
       handleRespWithNotifySuccess(response, () => {
         closeModal();
@@ -584,6 +592,7 @@ const CompetitionManagement: React.FC = () => {
             >
               <Option value="name">按名称排序</Option>
               <Option value="votes">按票数排序</Option>
+              <Option value="schedule">按日程排序</Option>
             </Select>
             <Search
               placeholder="搜索项目名称"
@@ -671,6 +680,7 @@ const CompetitionManagement: React.FC = () => {
                 value={sortBy}
                 onChange={setSortBy}
               >
+                <Option value="schedule">按日程排序</Option>
                 <Option value="name">按名称排序</Option>
                 <Option value="votes">按票数排序</Option>
               </Select>
@@ -875,6 +885,29 @@ const CompetitionManagement: React.FC = () => {
           >
             <InputNumber min={0} style={{ width: "100%" }} />
           </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item label="开始时间" name="start_time">
+                <DatePicker
+                  showTime
+                  format="YYYY-MM-DD HH:mm"
+                  placeholder="选择开始时间"
+                  style={{ width: "100%" }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="结束时间" name="end_time">
+                <DatePicker
+                  showTime
+                  format="YYYY-MM-DD HH:mm"
+                  placeholder="选择结束时间"
+                  style={{ width: "100%" }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Form.Item label="项目图片" name="image">
             <Upload

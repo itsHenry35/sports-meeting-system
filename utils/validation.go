@@ -25,6 +25,7 @@ var (
 	ErrInvalidRankingMode           = errors.New("比赛项目排名方式无效")
 	ErrMaxLessThanMin               = errors.New("最大报名人数不能小于最小报名人数")
 	ErrInvalidStatusForRegistration = errors.New("当前比赛状态不允许报名或取消报名")
+	ErrEndTimeBeforeStartTime       = errors.New("结束时间不能早于开始时间")
 )
 
 // 性别常量
@@ -123,6 +124,15 @@ func ValidateParticipantsLimit(minParticipants, maxParticipants int) error {
 	return nil
 }
 
+// ValidateCompetitionTime 验证比赛时间
+func ValidateCompetitionTime(startTime, endTime *time.Time) error {
+	// 如果都提供了时间，检查结束时间是否早于开始时间
+	if startTime != nil && endTime != nil && endTime.Before(*startTime) {
+		return ErrEndTimeBeforeStartTime
+	}
+	return nil
+}
+
 // IsCompetitionStatusValidForRegistration 检查比赛状态是否允许报名
 func IsCompetitionStatusValidForRegistration(status types.CompetitionStatus) bool {
 	return status == types.StatusApproved
@@ -147,7 +157,7 @@ func ValidateCompetitionStatus(status types.CompetitionStatus) bool {
 }
 
 // ValidateCompetitionSubmission 验证比赛项目提交
-func (cv *CompetitionValidator) ValidateCompetitionSubmission(name, unit string, gender int, rankingMode types.RankingMode, minParticipants, maxParticipants int, isAdmin bool) error {
+func (cv *CompetitionValidator) ValidateCompetitionSubmission(name, unit string, gender int, rankingMode types.RankingMode, minParticipants, maxParticipants int, startTime, endTime *time.Time, isAdmin bool) error {
 	// 获取当前选中的 EventID
 	cfg := config.Get()
 	currentEventID := cfg.CurrentEventID
@@ -169,6 +179,11 @@ func (cv *CompetitionValidator) ValidateCompetitionSubmission(name, unit string,
 
 	// 验证参与人数限制
 	if err := ValidateParticipantsLimit(minParticipants, maxParticipants); err != nil {
+		return err
+	}
+
+	// 验证比赛时间
+	if err := ValidateCompetitionTime(startTime, endTime); err != nil {
 		return err
 	}
 
@@ -202,6 +217,11 @@ func (cv *CompetitionValidator) ValidateCompetitionUpdate(competition *types.Com
 
 	// 验证参与人数限制
 	if err := ValidateParticipantsLimit(competition.MinParticipantsPerClass, competition.MaxParticipantsPerClass); err != nil {
+		return err
+	}
+
+	// 验证比赛时间
+	if err := ValidateCompetitionTime(competition.StartTime, competition.EndTime); err != nil {
 		return err
 	}
 

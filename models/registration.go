@@ -2,10 +2,12 @@ package models
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/SHXZ-OSS/sports-meeting-system/database"
 	"github.com/SHXZ-OSS/sports-meeting-system/types"
 	"github.com/SHXZ-OSS/sports-meeting-system/utils"
+	"gorm.io/gorm"
 )
 
 // RegisterForCompetitionForStudent 学生报名比赛（个人赛和团体赛都以学生为单位）
@@ -150,6 +152,9 @@ func GetCompetitionChecklist(scopeClassIDs *[]int) ([]map[string]any, error) {
 		return []map[string]any{}, nil
 	}
 
+	// 检查学生报名时间冲突
+	timeConflictIssues := checkStudentTimeConflicts(db, scopeClassIDs)
+
 	// 检查每个项目
 	var results []map[string]any
 	for _, comp := range competitions {
@@ -228,5 +233,96 @@ func GetCompetitionChecklist(scopeClassIDs *[]int) ([]map[string]any, error) {
 		}
 	}
 
+	// 添加时间冲突检测结果
+	results = append(results, timeConflictIssues...)
+
 	return results, nil
+}
+
+// checkStudentTimeConflicts 检查学生报名的比赛时间是否有冲突
+func checkStudentTimeConflicts(db *gorm.DB, scopeClassIDs *[]int) []map[string]any {
+	var issues []map[string]any
+
+	// 获取所有有时间信息的比赛
+	var competitions []types.Competition
+	if err := db.Where("start_time IS NOT NULL AND end_time IS NOT NULL").Find(&competitions).Error; err != nil {
+		return issues
+	}
+
+	// 构建比赛ID到比赛信息的映射
+	compMap := make(map[int]*types.Competition)
+	for i := range competitions {
+		compMap[competitions[i].ID] = &competitions[i]
+	}
+
+	// 获取所有报名记录
+	var registrations []types.Registration
+	query := db.Preload("Student")
+	if scopeClassIDs != nil && len(*scopeClassIDs) > 0 {
+		query = query.Where("class_id IN ?", *scopeClassIDs)
+	}
+	if err := query.Find(&registrations).Error; err != nil {
+		return issues
+	}
+
+	// 按学生分组报名记录
+	studentRegistrations := make(map[int][]*types.Registration)
+	for i := range registrations {
+		if registrations[i].StudentID != nil {
+			studentID := *registrations[i].StudentID
+			studentRegistrations[studentID] = append(studentRegistrations[studentID], &registrations[i])
+		}
+	}
+
+	// 检查每个学生的报名时间冲突
+	for studentID, regs := range studentRegistrations {
+		// 获取学生信息
+		var student types.Student
+		if err := db.Preload("Class").First(&student, studentID).Error; err != nil {
+			continue
+		}
+
+		// 检查该学生报名的比赛时间是否有重叠
+		for i := 0; i < len(regs); i++ {
+			comp1 := compMap[regs[i].CompetitionID]
+			if comp1 == nil || comp1.StartTime == nil || comp1.EndTime == nil {
+				continue
+			}
+
+			for j := i + 1; j < len(regs); j++ {
+				comp2 := compMap[regs[j].CompetitionID]
+				if comp2 == nil || comp2.StartTime == nil || comp2.EndTime == nil {
+					continue
+				}
+
+				// 检查时间是否重叠
+				if timesOverlap(comp1.StartTime, comp1.EndTime, comp2.StartTime, comp2.EndTime) {
+					time1 := fmt.Sprintf("%s-%s", comp1.StartTime.Format("06-01-02 15:04"), comp1.EndTime.Format("06-01-02 15:04"))
+					time2 := fmt.Sprintf("%s-%s", comp2.StartTime.Format("06-01-02 15:04"), comp2.EndTime.Format("06-01-02 15:04"))
+					issues = append(issues, map[string]any{
+						"competition_id":   comp1.ID,
+						"competition_name": comp1.Name,
+						"status":           "error",
+						"message":          fmt.Sprintf("学生 %s %s 报名的比赛时间冲突：%s（%s）和 %s（%s）", student.Class.Name, student.FullName, comp1.Name, time1, comp2.Name, time2),
+					})
+					issues = append(issues, map[string]any{
+						"competition_id":   comp2.ID,
+						"competition_name": comp2.Name,
+						"status":           "error",
+						"message":          fmt.Sprintf("学生 %s %s 报名的比赛时间冲突：%s（%s）和 %s（%s）", student.Class.Name, student.FullName, comp1.Name, time1, comp2.Name, time2),
+					})
+				}
+			}
+		}
+	}
+
+	return issues
+}
+
+// timesOverlap 检查两个时间段是否有重叠
+func timesOverlap(start1, end1, start2, end2 *time.Time) bool {
+	// 时间段1: [start1, end1]
+	// 时间段2: [start2, end2]
+	// 重叠条件: start1 < end2 AND start2 < end1
+	return start1.Before(*end2) && start2.Before(*end1)
 }

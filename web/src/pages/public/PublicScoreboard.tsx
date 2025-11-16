@@ -37,6 +37,7 @@ import {
   ReloadOutlined,
 } from "@ant-design/icons";
 import confetti from "canvas-confetti";
+import dayjs from "dayjs";
 import FadeContent from "../../components/FadeContent";
 import BlurText from "../../components/BlurText";
 import LightRays from "../../components/LightRays";
@@ -112,7 +113,7 @@ const PublicScoreboard: React.FC = () => {
   const [animationQueue, setAnimationQueue] = useState<Score[]>([]);
   const [animatingCompetition, setAnimatingCompetition] =
     useState<Competition | null>(null);
-  const [longPressTimer, setLongPressTimer] = useState<number | null>(null);
+  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [isManualReplay, setIsManualReplay] = useState(false); // 标记是否是手动重播
 
   // 网站名称
@@ -1182,6 +1183,11 @@ const PublicScoreboard: React.FC = () => {
       render: (record: Competition) => (
         <div>
           <div style={{ fontWeight: 500, fontSize: 16 }}>{record.name}</div>
+          {record.start_time && record.end_time && (
+            <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+              {dayjs(record.start_time).format("YY-MM-DD HH:mm")} - {dayjs(record.end_time).format("YY-MM-DD HH:mm")}
+            </div>
+          )}
         </div>
       ),
     },
@@ -2484,10 +2490,6 @@ const PublicScoreboard: React.FC = () => {
                 <Col span={isMobile ? 24 : 8}>
                   <Text strong>性别要求：</Text>
                   <Text>{getGenderText(modal.competition.gender)}</Text>
-                </Col>
-                <Col span={isMobile ? 24 : 8}>
-                  <Text strong>成绩单位：</Text>
-                  <Text>{modal.competition.unit}</Text>
                 </Col>
                 {modal.competition.submitter_name && (
                   <Col span={isMobile ? 24 : 8}>

@@ -58,6 +58,8 @@ type Competition struct {
 	ReviewedAt              *time.Time        `json:"reviewed_at,omitempty"`
 	ScoreReviewedAt         *time.Time        `json:"score_reviewed_at,omitempty"`
 	ScoreCreatedAt          *time.Time        `json:"score_created_at,omitempty"`
+	StartTime               *time.Time        `json:"start_time,omitempty"`         // 比赛开始时间
+	EndTime                 *time.Time        `json:"end_time,omitempty"`           // 比赛结束时间
 
 	// 关联关系，不响应到前端
 	Submitter      *Student       `json:"-" gorm:"foreignKey:SubmitterID"`

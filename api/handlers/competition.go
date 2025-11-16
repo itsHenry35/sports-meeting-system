@@ -55,6 +55,8 @@ type CreateCompetitionRequest struct {
 	MaxParticipantsPerClass int                   `json:"max_participants_per_class" binding:"min=0"`                // 每班最多报名人数
 	Image                   string                `json:"image"`                                                     // Base64编码的图片
 	Unit                    string                `json:"unit" binding:"required"`                                   // 成绩单位
+	StartTime               *time.Time            `json:"start_time"`                                                // 比赛开始时间
+	EndTime                 *time.Time            `json:"end_time"`                                                  // 比赛结束时间
 }
 
 // UpdateCompetitionRequest 更新比赛项目请求
@@ -68,6 +70,8 @@ type UpdateCompetitionRequest struct {
 	Image                   string                `json:"image"`                                                     // Base64编码的图片
 	Unit                    string                `json:"unit" binding:"required"`                                   // 成绩单位
 	Gender                  int                   `json:"gender" binding:"required,min=1,max=3"`
+	StartTime               *time.Time            `json:"start_time"`  // 比赛开始时间
+	EndTime                 *time.Time            `json:"end_time"`    // 比赛结束时间
 }
 
 // GetAllCompetitions 获取所有比赛项目
@@ -342,9 +346,9 @@ func CreateCompetition(c *gin.Context) {
 	// 创建比赛项目
 	var err error
 	if role == services.RoleStudent {
-		err = models.CreateCompetition(req.Name, req.Description, imagePath, req.Unit, req.Gender, req.RankingMode, req.CompetitionType, req.MinParticipantsPerClass, req.MaxParticipantsPerClass, studentID)
+		err = models.CreateCompetition(req.Name, req.Description, imagePath, req.Unit, req.Gender, req.RankingMode, req.CompetitionType, req.MinParticipantsPerClass, req.MaxParticipantsPerClass, studentID, req.StartTime, req.EndTime)
 	} else {
-		err = models.AdminCreateCompetition(req.Name, req.Description, imagePath, req.Unit, req.Gender, req.RankingMode, req.CompetitionType, req.MinParticipantsPerClass, req.MaxParticipantsPerClass, ID)
+		err = models.AdminCreateCompetition(req.Name, req.Description, imagePath, req.Unit, req.Gender, req.RankingMode, req.CompetitionType, req.MinParticipantsPerClass, req.MaxParticipantsPerClass, ID, req.StartTime, req.EndTime)
 	}
 	if err != nil {
 		utils.ResponseError(c, http.StatusInternalServerError, "创建比赛项目失败: "+err.Error())
@@ -394,6 +398,8 @@ func UpdateCompetition(c *gin.Context) {
 	competition.CompetitionType = req.CompetitionType
 	competition.MinParticipantsPerClass = req.MinParticipantsPerClass
 	competition.MaxParticipantsPerClass = req.MaxParticipantsPerClass
+	competition.StartTime = req.StartTime
+	competition.EndTime = req.EndTime
 
 	// 确保图片目录存在
 	uploadDir := "./data/uploads"

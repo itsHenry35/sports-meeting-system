@@ -12,13 +12,13 @@ import (
 )
 
 // CreateCompetition 创建比赛项目（学生提交）
-func CreateCompetition(name, description, imagePath, unit string, gender int, rankingMode types.RankingMode, competitionType types.CompetitionType, minParticipantsPerClass, maxParticipantsPerClass, submitterID int) error {
+func CreateCompetition(name, description, imagePath, unit string, gender int, rankingMode types.RankingMode, competitionType types.CompetitionType, minParticipantsPerClass, maxParticipantsPerClass, submitterID int, startTime, endTime *time.Time) error {
 	// 获取数据库连接和验证器
 	db := database.GetDB()
 	validator := utils.NewCompetitionValidator(db)
 
 	// 使用验证器验证比赛项目提交（学生提交）
-	if err := validator.ValidateCompetitionSubmission(name, unit, gender, rankingMode, minParticipantsPerClass, maxParticipantsPerClass, false); err != nil {
+	if err := validator.ValidateCompetitionSubmission(name, unit, gender, rankingMode, minParticipantsPerClass, maxParticipantsPerClass, startTime, endTime, false); err != nil {
 		return err
 	}
 
@@ -40,6 +40,8 @@ func CreateCompetition(name, description, imagePath, unit string, gender int, ra
 		MaxParticipantsPerClass: maxParticipantsPerClass,
 		Status:                  types.StatusPendingApproval,
 		SubmitterID:             &submitterID,
+		StartTime:               startTime,
+		EndTime:                 endTime,
 	}
 
 	// 使用事务插入比赛数据
@@ -65,7 +67,7 @@ func UpdateCompetition(competition *types.Competition) error {
 
 	// 使用事务更新比赛数据
 	err := db.Transaction(func(tx *gorm.DB) error {
-		return tx.Model(competition).Select("name", "description", "image_path", "unit", "gender", "ranking_mode", "competition_type", "min_participants_per_class", "max_participants_per_class").Updates(map[string]interface{}{
+		return tx.Model(competition).Select("name", "description", "image_path", "unit", "gender", "ranking_mode", "competition_type", "min_participants_per_class", "max_participants_per_class", "start_time", "end_time").Updates(map[string]interface{}{
 			"name":                       competition.Name,
 			"description":                competition.Description,
 			"image_path":                 competition.ImagePath,
@@ -75,6 +77,8 @@ func UpdateCompetition(competition *types.Competition) error {
 			"competition_type":           competition.CompetitionType,
 			"min_participants_per_class": competition.MinParticipantsPerClass,
 			"max_participants_per_class": competition.MaxParticipantsPerClass,
+			"start_time":                 competition.StartTime,
+			"end_time":                   competition.EndTime,
 		}).Error
 	})
 	if err != nil {
@@ -131,13 +135,13 @@ func RejectCompetitionByID(id, reviewerID int) error {
 }
 
 // AdminCreateCompetition 管理员创建比赛项目（不受时间限制）
-func AdminCreateCompetition(name, description, imagePath, unit string, gender int, rankingMode types.RankingMode, competitionType types.CompetitionType, minParticipantsPerClass, maxParticipantsPerClass, submitterID int) error {
+func AdminCreateCompetition(name, description, imagePath, unit string, gender int, rankingMode types.RankingMode, competitionType types.CompetitionType, minParticipantsPerClass, maxParticipantsPerClass, submitterID int, startTime, endTime *time.Time) error {
 	// 获取数据库连接和验证器
 	db := database.GetDB()
 	validator := utils.NewCompetitionValidator(db)
 
 	// 使用验证器验证比赛项目提交（管理员提交）
-	if err := validator.ValidateCompetitionSubmission(name, unit, gender, rankingMode, minParticipantsPerClass, maxParticipantsPerClass, true); err != nil {
+	if err := validator.ValidateCompetitionSubmission(name, unit, gender, rankingMode, minParticipantsPerClass, maxParticipantsPerClass, startTime, endTime, true); err != nil {
 		return err
 	}
 
@@ -161,6 +165,8 @@ func AdminCreateCompetition(name, description, imagePath, unit string, gender in
 		Status:                  types.StatusApproved,
 		ReviewedAt:              &now,
 		ReviewerID:              &submitterID,
+		StartTime:               startTime,
+		EndTime:                 endTime,
 	}
 
 	// 使用事务插入比赛数据
@@ -267,8 +273,10 @@ func GetAllCompetitions(page, pageSize int, statuses []types.CompetitionStatus, 
 		query = query.Order("vote_count DESC")
 	case "name":
 		query = query.Order("name ASC")
+	case "schedule":
+		query = query.Order("start_time ASC")
 	default:
-		query = query.Order("name ASC") // 默认按名称排序
+		query = query.Order("start_time ASC") // 默认按日程排序
 	}
 
 	// 添加分页

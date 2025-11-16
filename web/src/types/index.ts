@@ -53,6 +53,8 @@ export interface Competition {
   score_reviewed_at?: string;
   score_created_at?: string;
   created_at?: string;
+  start_time?: string;
+  end_time?: string;
   scores?: Score[];
 }
 
