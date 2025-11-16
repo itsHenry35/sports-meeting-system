@@ -139,7 +139,7 @@ const CertificateExport: React.FC<CertificateExportProps> = ({
             participantName,
             schoolName: values.schoolName,
             eventName: values.eventName,
-            competitionName: `《${score.competition_name}》`,
+            competitionName: score.competition_name,
             ranking: score.ranking ?? 0,
             date: values.date.format("YYYY-MM-DD"),
             fontSize1: values.fontSize1,
