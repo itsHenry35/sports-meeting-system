@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import dayjs from "dayjs";
 import {
   Card,
   Table,
@@ -337,6 +338,11 @@ const StudentCompetitions: React.FC = () => {
           )}
           <div>
             <div style={{ fontWeight: 500 }}>{record.name}</div>
+            {record.start_time && record.end_time && (
+              <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+                {dayjs(record.start_time).format("MM-DD HH:mm")} - {dayjs(record.end_time).format("HH:mm")}
+              </div>
+            )}
           </div>
         </div>
       ),

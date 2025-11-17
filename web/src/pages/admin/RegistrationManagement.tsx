@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import dayjs from "dayjs";
 import {
   Card,
   Table,
@@ -718,6 +719,16 @@ const RegistrationManagement: React.FC = () => {
       filteredValue: searchText ? [searchText] : null,
       onFilter: (value: boolean | React.Key, record: Competition) =>
         record.name.toLowerCase().includes(value.toString().toLowerCase()),
+      render: (name: string, record: Competition) => (
+        <div>
+          <div>{name}</div>
+          {record.start_time && record.end_time && (
+            <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+              {dayjs(record.start_time).format("MM-DD HH:mm")} - {dayjs(record.end_time).format("HH:mm")}
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       title: "状态",
