@@ -24,6 +24,7 @@ import {
   Space,
   Tag,
   Avatar,
+  message,
 } from "antd";
 import {
   TrophyOutlined,
@@ -53,16 +54,71 @@ import {
 } from "../../utils/competition";
 import { useWebsite } from "../../contexts/WebsiteContext";
 import { useIsMobile } from "../../utils";
-const Hyperspeed = lazy(() => import("../../components/Hyperspeed"));
+import {
+  shouldEnableBackgroundEffects,
+  toggleBackgroundEffects,
+} from "../../utils/performance";
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
 const PublicScoreboard: React.FC = () => {
   const isMobile = useIsMobile();
-  const hyperSpeedElement = useMemo(
-    () => (
-      <Hyperspeed
+  
+  // 背景特效控制
+  const [enableBackgroundEffects, setEnableBackgroundEffects] = useState(false);
+  
+  // 隐藏的背景特效开关 - 连续快速点击标题5次触发
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const handleClick = useCallback(() => {
+    clickCountRef.current += 1;
+    
+    // 清除之前的定时器
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+    
+    // 如果点击次数达到5次，切换背景特效
+    if (clickCountRef.current >= 5) {
+      const isDisabled = toggleBackgroundEffects();
+      setEnableBackgroundEffects(!isDisabled);
+      
+      if (isDisabled) {
+        message.success('背景特效已禁用');
+      } else {
+        message.success('背景特效已启用');
+      }
+      
+      clickCountRef.current = 0;
+      return;
+    }
+    
+    // 2秒内没有继续点击则重置计数
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 2000);
+  }, []);
+  
+  // 检测是否应该启用背景特效
+  useEffect(() => {
+    shouldEnableBackgroundEffects().then((shouldEnable) => {
+      setEnableBackgroundEffects(shouldEnable);
+    });
+  }, []);
+  
+  // 动态导入 Hyperspeed
+  const HyperspeedComponent = useMemo(() => {
+    if (!enableBackgroundEffects) return null;
+    return lazy(() => import("../../components/Hyperspeed"));
+  }, [enableBackgroundEffects]);
+  
+  const hyperSpeedElement = useMemo(() => {
+    if (!HyperspeedComponent) return null;
+    
+    return (
+      <HyperspeedComponent
         effectOptions={{
           onSpeedUp: () => {},
           onSlowDown: () => {},
@@ -101,9 +157,8 @@ const PublicScoreboard: React.FC = () => {
           },
         }}
       />
-    ),
-    [],
-  );
+    );
+  }, [HyperspeedComponent]);
 
   const navigate = useNavigate();
   const [lastNotifiedCompetitionId, setLastNotifiedCompetitionId] = useState<
@@ -1417,17 +1472,19 @@ const PublicScoreboard: React.FC = () => {
       style={{ minHeight: "100vh", background: "#000", overflow: "hidden" }}
     >
       {/* 背景动画 */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 0 }}>
-        <Suspense
-          fallback={
-            <div
-              style={{ background: "#000", width: "100%", height: "100%" }}
-            />
-          }
-        >
-          {hyperSpeedElement}
-        </Suspense>
-      </div>
+      {enableBackgroundEffects && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 0 }}>
+          <Suspense
+            fallback={
+              <div
+                style={{ background: "#000", width: "100%", height: "100%" }}
+              />
+            }
+          >
+            {hyperSpeedElement}
+          </Suspense>
+        </div>
+      )}
 
       {/* 页面内容 */}
       <Header
@@ -1437,14 +1494,18 @@ const PublicScoreboard: React.FC = () => {
           justifyContent: "space-between",
           alignItems: "center",
           padding: "0 16px",
+          zIndex: 10,
         }}
       >
         <Title
+          onClick={handleClick}
           style={{
             color: "#fff",
             margin: 0,
             whiteSpace: "nowrap",
             fontSize: "clamp(8px, 5vw, 24px)", // 最小8px，最大24px，随屏幕宽度缩放
+            cursor: "default",
+            userSelect: "none",
           }}
         >
           {websiteName}
